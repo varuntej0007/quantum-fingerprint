@@ -41,6 +41,26 @@ function seedFromHex(hex: string): number {
   return seed;
 }
 
+// Same idea as the Pi's onboard LED: the blink count and speed are computed
+// directly from the real seed bytes, not a fixed animation -- just rendered
+// on screen instead of on hardware, so it works for anyone visiting the site.
+interface PulsePattern {
+  blinks: number;
+  onMs: number;
+  offMs: number;
+}
+
+function pulsePatternFromHex(hex: string): PulsePattern {
+  const byte0 = parseInt(hex.slice(0, 2), 16);
+  const byte1 = parseInt(hex.slice(2, 4), 16);
+  const byte2 = parseInt(hex.slice(4, 6), 16);
+  return {
+    blinks: 1 + (byte0 % 5),
+    onMs: 60 + Math.round((byte1 / 255) * 250),
+    offMs: 60 + Math.round((byte2 / 255) * 150),
+  };
+}
+
 function drawFingerprint(canvas: HTMLCanvasElement, seedHex: string) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -106,6 +126,25 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [entropy, setEntropy] = useState<EntropyResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pulse, setPulse] = useState<PulsePattern | null>(null);
+  const [pulseOn, setPulseOn] = useState(false);
+
+  const runPulseAnimation = useCallback((pattern: PulsePattern) => {
+    let i = 0;
+    const step = () => {
+      if (i >= pattern.blinks) {
+        setPulseOn(false);
+        return;
+      }
+      setPulseOn(true);
+      setTimeout(() => {
+        setPulseOn(false);
+        i++;
+        setTimeout(step, pattern.offMs);
+      }, pattern.onMs);
+    };
+    step();
+  }, []);
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -116,10 +155,13 @@ export default function Home() {
       if (canvasRef.current) {
         drawFingerprint(canvasRef.current, data.seedHex);
       }
+      const pattern = pulsePatternFromHex(data.seedHex);
+      setPulse(pattern);
+      runPulseAnimation(pattern);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [runPulseAnimation]);
 
   const sourceColor =
     entropy?.source === "curby-quantum" ? "text-emerald-400" :
@@ -153,14 +195,34 @@ export default function Home() {
 
       {entropy && (
         <div className="w-full max-w-md bg-slate-900/60 border border-slate-800 rounded-lg p-4 text-xs font-mono space-y-1.5">
+          <div className="flex items-center gap-2 pb-2 mb-1 border-b border-slate-800">
+            <div
+              className="w-3 h-3 rounded-full transition-all duration-75"
+              style={{
+                background: pulseOn ? "#4ade80" : "#1e293b",
+                boxShadow: pulseOn ? "0 0 10px 2px #4ade80" : "none",
+              }}
+            />
+            <span className="text-slate-400">
+              quantum pulse signal{pulse ? `: ${pulse.blinks} blink${pulse.blinks > 1 ? "s" : ""}, ~${pulse.onMs}ms each` : ""}
+            </span>
+          </div>
+
           <div>
             source: <span className={sourceColor}>{entropy.source}</span>
           </div>
           {entropy.curbyRound && (
             <div>CURBy round: <span className="text-slate-300">{entropy.curbyRound}</span></div>
           )}
-          <div>bit balance: <span className="text-slate-300">{entropy.healthCheck.bitBalance}</span> ({entropy.healthCheck.bitBalanceVerdict})</div>
-          <div>Shannon entropy: <span className="text-slate-300">{entropy.healthCheck.shannonEntropy} bits/byte</span></div>
+          <div>bit balance (raw CURBy source): <span className="text-slate-300">{entropy.healthCheck.bitBalance}</span> ({entropy.healthCheck.bitBalanceVerdict})</div>
+          <div>Shannon entropy (raw CURBy source): <span className="text-slate-300">{entropy.healthCheck.shannonEntropy} bits/byte</span></div>
+          <div className="text-slate-600 text-[10px]">
+            These stay constant while CURBy's round (#{entropy.curbyRound}) is unchanged upstream --
+            that's expected, not a bug: this checks the raw source, not this session's final randomness.
+          </div>
+          <div className="pt-1">
+            session seed (unique every time): <span className="text-emerald-400">{entropy.seedHex.slice(0, 16)}...</span>
+          </div>
           <div className="text-slate-600 text-[10px] pt-1">{entropy.note}</div>
         </div>
       )}
