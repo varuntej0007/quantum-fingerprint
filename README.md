@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Quantum Fingerprint
 
-## Getting Started
+A small web app that turns real quantum-beacon randomness into a unique
+visual pattern. Every generated image is different because the underlying
+random data is different -- nothing about the picture is pre-made or
+templated.
 
-First, run the development server:
+## What it does
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. Fetches a random data pulse from CURBy (`random.colorado.edu`), a public
+   randomness beacon run by CU Boulder / NIST.
+2. Runs a basic statistical check on that data (is it actually well-balanced
+   and unpredictable, or is something off).
+3. Uses the random bytes to decide every visual parameter of the pattern --
+   number of points, their distance from center, their color, their size.
+   Nothing is hardcoded or randomly chosen by a separate, unrelated source.
+4. Draws the result on an HTML canvas in the browser.
+
+Same input bytes always produce the same picture. Different input bytes
+(every click) produce a different one. That link is intentional -- the
+picture is a direct, visible consequence of the randomness, not decoration
+next to it.
+
+## Why it's built this way
+
+CURBy's live quantum photon source is currently offline for maintenance
+(publicly stated on their site, and confirmed here by checking the same
+pulse twice and seeing identical data). Rather than hide that, this app
+mixes CURBy's data with a fresh local random value and a timestamp, so the
+result is still different every time even while the upstream source is
+static. The app tells you honestly which mode produced a given result
+(`curby-quantum`, `curby-classical`, or `local-fallback`) instead of always
+claiming "quantum."
+
+## Tech stack
+
+- Next.js (App Router) + TypeScript
+- No external drawing/animation libraries -- plain HTML canvas
+- No native/compiled dependencies -- runs the same way on Windows, macOS,
+  Linux, and ARM (e.g. Raspberry Pi) with just `npm install`
+
+## Project structure
+
+```
+app/
+  page.tsx              -- the UI and canvas drawing logic
+  api/entropy/route.ts  -- server-side endpoint that fetches and checks entropy
+lib/
+  curby.ts               -- entropy fetching, mixing, and statistical checks
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Running it locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open http://localhost:3000, click "Generate My Fingerprint."
 
-## Learn More
+## Known limitations
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The statistical health check runs on a small sample (~64 bytes per
+  pulse), so it's an indicative sanity check, not a certified randomness
+  evaluation.
+- CURBy's live quantum source is currently unavailable upstream (see
+  above); the app is built to work correctly either way.
